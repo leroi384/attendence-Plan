@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Anwesenheits-Tracker</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --bg:#fff;--bg2:#f4f4f2;--bg3:#e8e8e6;
+  --text:#111;--text2:#666;--text3:#bbb;
+  --border:rgba(0,0,0,0.08);--border2:rgba(0,0,0,0.18);
+  --green:#1e7e34;--green-bg:#e6f4ea;--green-bd:#34a853;
+  --red:#c5221f;--red-bg:#fce8e6;--red-bd:#ea4335;
+  --blue:#1a73e8;
+  --gutter:clamp(36px,5.5vw,50px);
+  --hh:clamp(48px,7.5vw,70px);
+  --r:clamp(6px,1.2vw,9px);
+  --gap:clamp(6px,1.3vw,11px);
+  --pad:clamp(14px,3.5vw,26px);
+  --xs:clamp(10px,1.9vw,12px);
+  --sm:clamp(11px,2.2vw,13px);
+  --md:clamp(13px,2.8vw,15px);
+  --lg:clamp(15px,3.5vw,19px);
+  --2xl:clamp(24px,5.5vw,38px);
+}
+@media(prefers-color-scheme:dark){
+  :root{
+    --bg:#1a1a1a;--bg2:#242424;--bg3:#2e2e2e;
+    --text:#f0f0f0;--text2:#888;--text3:#444;
+    --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.16);
+    --green:#4caf72;--green-bg:#1a2e20;--green-bd:#2d7a44;
+    --red:#f28b82;--red-bg:#2e1a1a;--red-bd:#a33;
+    --blue:#6ab4ff;
+  }
+}
+html,body{width:100%;min-height:100vh;background:var(--bg);color:var(--text);}
+body{font-family:system-ui,-apple-system,'Segoe UI',sans-serif;font-size:var(--md);line-height:1.5;}
+#app{width:100%;max-width:1200px;margin:0 auto;padding:var(--pad);}
+
+.hdr{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:var(--gap);margin-bottom:var(--pad);}
+h1{font-size:var(--lg);font-weight:700;letter-spacing:-.02em;}
+.sync{font-size:var(--xs);color:var(--text3);display:flex;align-items:center;gap:5px;}
+.sdot{width:7px;height:7px;border-radius:50%;background:var(--text3);flex-shrink:0;}
+.sdot.ok{background:#34a853;}.sdot.err{background:#ea4335;}.sdot.spin{background:#fbbc04;animation:blink 1s infinite;}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+
+.wn{display:flex;align-items:center;justify-content:space-between;gap:var(--gap);margin-bottom:var(--pad);}
+.wn-title{font-size:var(--lg);font-weight:700;}
+.wn-dates{font-size:var(--sm);color:var(--text2);}
+.bnav{border:1.5px solid var(--border2);background:transparent;border-radius:var(--r);padding:clamp(6px,1.5vw,11px) clamp(10px,2.2vw,18px);cursor:pointer;font-size:var(--sm);color:var(--text2);transition:background .15s;}
+.bnav:hover{background:var(--bg2);}
+
+/* 4 stat cards */
+.sg{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--gap);margin-bottom:var(--pad);}
+@media(max-width:520px){.sg{grid-template-columns:repeat(2,minmax(0,1fr));}}
+.sc{background:var(--bg2);border-radius:var(--r);padding:clamp(10px,2.2vw,18px);}
+.sl{font-size:var(--xs);color:var(--text2);margin-bottom:3px;text-transform:uppercase;letter-spacing:.05em;}
+.sv{font-size:var(--2xl);font-weight:700;line-height:1;}
+
+/* ── TIMETABLE ─────────────────────────────────────────────────────────── */
+.tt-outer{overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:var(--pad);border:1px solid var(--border);border-radius:var(--r);}
+.tt-inner{min-width:680px;}
+
+/* sticky header row */
+.tt-head{display:flex;position:sticky;top:0;z-index:4;background:var(--bg);border-bottom:2px solid var(--border2);}
+.tt-head-gutter{width:var(--gutter);flex-shrink:0;border-right:1px solid var(--border2);}
+.tt-day-heads{flex:1;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));}
+.tt-dh{font-size:var(--xs);color:var(--text2);text-align:center;padding:6px 3px;line-height:1.35;border-right:1px solid var(--border);}
+.tt-dh:last-child{border-right:none;}
+.tt-dh.today{color:var(--blue);font-weight:700;}
+.tt-dh.weekend{color:var(--text3);}
+
+/* body */
+.tt-body{display:flex;height:calc(10 * var(--hh));}
+
+/* time column */
+.tt-timecol{width:var(--gutter);flex-shrink:0;position:relative;border-right:1px solid var(--border2);}
+.tt-tlabel{position:absolute;right:5px;font-size:calc(var(--xs) - 1px);color:var(--text3);line-height:1;transform:translateY(-50%);}
+.tt-tlabel:first-child{transform:none;}
+
+/* day columns container */
+.tt-day-bodies{flex:1;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));position:relative;}
+
+/* individual day column */
+.tt-daycol{
+  position:relative;
+  border-right:1px solid var(--border);
+  background:repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent calc(var(--hh) - 1px),
+    var(--border) calc(var(--hh) - 1px),
+    var(--border) var(--hh)
+  );
+}
+.tt-daycol:last-child{border-right:none;}
+.tt-daycol.today-col{background-color:rgba(26,115,232,0.03);background-image:repeating-linear-gradient(to bottom,transparent 0,transparent calc(var(--hh) - 1px),var(--border) calc(var(--hh) - 1px),var(--border) var(--hh));}
+.tt-daycol.weekend-col{background-color:var(--bg2);background-image:repeating-linear-gradient(to bottom,transparent 0,transparent calc(var(--hh) - 1px),var(--border) calc(var(--hh) - 1px),var(--border) var(--hh));}
+
+/* session block */
+.tt-sess{
+  position:absolute;left:3px;right:3px;
+  border-radius:5px;
+  padding:clamp(4px,.8vw,7px) clamp(5px,.9vw,8px);
+  border:1px solid transparent;
+  display:flex;flex-direction:column;
+  overflow:hidden;z-index:2;
+}
+.ts-name{font-weight:700;font-size:var(--xs);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.2;margin-bottom:1px;}
+.ts-type{font-size:calc(var(--xs) - 1px);font-weight:600;line-height:1.2;}
+.ts-btns{display:flex;gap:2px;margin-top:auto;padding-top:3px;}
+.ts-btn{flex:1;font-size:var(--xs);padding:clamp(3px,.6vw,5px) 0;text-align:center;border-radius:3px;cursor:pointer;border:1px solid var(--border2);background:transparent;color:var(--text2);line-height:1;}
+.ts-btn.ap{background:var(--green-bg);border-color:var(--green-bd);color:var(--green);}
+.ts-btn.aa{background:var(--red-bg);border-color:var(--red-bd);color:var(--red);}
+.ts-future{font-size:calc(var(--xs) - 1px);color:var(--text3);margin-top:auto;padding-top:2px;}
+
+/* chart + catchup */
+.sec{font-size:var(--md);font-weight:700;margin:var(--pad) 0 6px;}
+.sec-row{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:var(--gap);margin:var(--pad) 0 10px;}
+.mu{color:var(--text2);font-size:var(--sm);margin-bottom:clamp(8px,1.8vw,14px);}
+#cw{position:relative;width:100%;}
+.nli{display:flex;align-items:center;gap:clamp(8px,1.8vw,14px);padding:clamp(9px,1.8vw,13px) 0;border-bottom:1px solid var(--border);}
+.nd{width:clamp(9px,1.8vw,12px);height:clamp(9px,1.8vw,12px);border-radius:50%;flex-shrink:0;}
+.ni-name{font-weight:700;font-size:var(--md);flex:1;}
+.ni-date{color:var(--text2);font-size:var(--sm);}
+.ni-type{font-size:var(--xs);font-weight:700;padding:2px 6px;border-radius:3px;white-space:nowrap;}
+.em{color:var(--text3);font-size:var(--sm);padding:10px 0;}
+
+/* toggle */
+.vtog{display:flex;gap:3px;background:var(--bg2);border-radius:var(--r);padding:3px;}
+.vbtn{padding:clamp(4px,1vw,7px) clamp(8px,1.5vw,14px);border-radius:calc(var(--r) - 2px);border:none;background:transparent;cursor:pointer;font-size:var(--sm);color:var(--text2);transition:all .15s;white-space:nowrap;}
+.vbtn.active{background:var(--bg);color:var(--text);box-shadow:0 1px 4px rgba(0,0,0,.1);}
+
+/* footer */
+.footer{margin-top:var(--pad);padding-top:var(--pad);border-top:1px solid var(--border);display:flex;gap:var(--gap);flex-wrap:wrap;align-items:center;}
+.foot-btn{font-size:var(--sm);color:var(--text2);background:transparent;border:1px solid var(--border2);border-radius:var(--r);padding:clamp(6px,1.4vw,10px) clamp(11px,2.2vw,18px);cursor:pointer;}
+.foot-btn:hover{background:var(--bg2);}
+.foot-note{font-size:var(--xs);color:var(--text3);}
+
+#ls{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;z-index:99;}
+.spinner{width:28px;height:28px;border:2.5px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+</style>
+</head>
+<body>
+
+<div id="ls">
+  <div class="spinner"></div>
+  <div style="font-size:13px;color:var(--text2);">Daten werden geladen…</div>
+</div>
+
+<div id="app" style="display:none;">
+  <div class="hdr">
+    <h1>Anwesenheits-Tracker</h1>
+    <div class="sync">
+      <div class="sdot" id="sdot"></div>
+      <span id="slbl">–</span>
+    </div>
+  </div>
+
+  <div class="wn">
+    <button class="bnav" onclick="chW(-1)">← Zurück</button>
+    <div style="text-align:center;">
+      <div class="wn-title" id="wl"></div>
+      <div class="wn-dates" id="wd"></div>
+    </div>
+    <button class="bnav" onclick="chW(1)">Vor →</button>
+  </div>
+
+  <div class="sg">
+    <div class="sc"><div class="sl">Anwesenheit</div><div class="sv" id="s1">–</div></div>
+    <div class="sc"><div class="sl">Fehltermine</div><div class="sv" id="s2">0</div></div>
+    <div class="sc"><div class="sl">Diese Woche</div><div class="sv" id="s4">0</div></div>
+    <div class="sc"><div class="sl">Nachzuholen</div><div class="sv" id="s3">0</div></div>
+  </div>
+
+  <div id="timetable"></div>
+
+  <div class="sec">Anwesenheit pro Fach</div>
+  <div class="mu" id="ci">Semester gesamt</div>
+  <div id="cw"><canvas id="cc" role="img" aria-label="Balkendiagramm Anwesenheitsquote pro Fach"></canvas></div>
+
+  <div class="sec-row">
+    <div class="sec" style="margin:0;">Nachzuholen</div>
+    <div class="vtog">
+      <button class="vbtn active" id="cu-wk" onclick="setCU('week')">Diese Woche</button>
+      <button class="vbtn" id="cu-all" onclick="setCU('all')">Gesamt</button>
+    </div>
+  </div>
+  <div id="nl"></div>
+
+  <div class="footer">
+    <button class="foot-btn" onclick="clearData()">Daten zurücksetzen</button>
+    <span class="foot-note">Zeiten anpassen: DEFAULT_SUBJECTS im &lt;script&gt;</span>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+const SUPA_URL = 'https://vatuhgjccpkvvtqfrgkm.supabase.co';
+const SUPA_KEY = 'sb_publishable_Eh9dn10lBV1ZD5FKOdvSvQ_Ru-XWhbj';
+const db = supabase.createClient(SUPA_URL, SUPA_KEY);
+
+// ── FÄCHER ── day: 0=Mo 1=Di 2=Mi 3=Do 4=Fr (Sa/So bleiben leer) ─────────
+// duration in Minuten. Standard: 120. Verschiedene Längen als Beispiele.
+const DEFAULT_SUBJECTS = [
+  { id:'s1', name:'Maschinenelemente', short:'ME', color:'#378ADD',
+    schedule:[
+      {day:0, time:'08:00', type:'Vorlesung',    duration:90},   // Mo 08–09:30
+      {day:2, time:'10:00', type:'Zentralübung', duration:120},  // Mi 10–12
+      {day:4, time:'14:00', type:'Tutorium',     duration:60},   // Fr 14–15
+    ]},
+  { id:'s2', name:'Thermodynamik', short:'TD', color:'#D85A30',
+    schedule:[
+      {day:1, time:'14:00', type:'Lernzeit', duration:120},      // Di 14–16
+      {day:3, time:'16:00', type:'Lernzeit', duration:120},      // Do 16–18
+    ]},
+  { id:'s3', name:'Modellierung von Unsicherheiten', short:'MU', color:'#7F77DD',
+    schedule:[
+      {day:2, time:'14:00', type:'Lernzeit', duration:120},      // Mi 14–16
+      {day:4, time:'16:00', type:'Lernzeit', duration:120},      // Fr 16–18
+    ]},
+  { id:'s4', name:'Fluiddynamik', short:'FD', color:'#1D9E75',
+    schedule:[
+      {day:1, time:'08:00', type:'Vorlesung',    duration:120},  // Di 08–10
+      {day:0, time:'10:00', type:'Zentralübung', duration:120},  // Mo 10–12
+      {day:3, time:'08:00', type:'Tutorium',     duration:120},  // Do 08–10
+    ]},
+  { id:'s5', name:'Wärmetransportphänomene', short:'WT', color:'#BA7517',
+    schedule:[
+      {day:2, time:'08:00', type:'Vorlesung',    duration:120},  // Mi 08–10
+      {day:1, time:'10:00', type:'Zentralübung', duration:120},  // Di 10–12
+      {day:4, time:'12:00', type:'Tutorium',     duration:90},   // Fr 12–13:30
+    ]},
+  { id:'s6', name:'Regelungstechnik', short:'RT', color:'#D4537E',
+    schedule:[
+      {day:3, time:'12:00', type:'Vorlesung',    duration:120},  // Do 12–14
+      {day:4, time:'10:00', type:'Zentralübung', duration:120},  // Fr 10–12
+      {day:0, time:'16:00', type:'Tutorium',     duration:120},  // Mo 16–18
+    ]},
+  { id:'s7', name:'Technische Mechanik 3', short:'TM3', color:'#639922',
+    schedule:[
+      {day:0, time:'14:00', type:'Lernzeit', duration:120},      // Mo 14–16
+      {day:2, time:'16:00', type:'Lernzeit', duration:120},      // Mi 16–18
+    ]},
+];
+// ─────────────────────────────────────────────────────────────────────────
+
+const TYPE_COLORS = {
+  'Vorlesung':'#1a73e8','Zentralübung':'#e37400','Tutorium':'#1e7e34','Lernzeit':'#7F77DD'
+};
+const DAYS   = ['Mo','Di','Mi','Do','Fr','Sa','So'];
+const DFULL  = ['Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag','Sonntag'];
+const JS2IDX = [6,0,1,2,3,4,5]; // getDay() (0=Sun) → DFULL index
+
+const START_H = 8, END_H = 18; // timetable range
+
+let subjs = JSON.parse(JSON.stringify(DEFAULT_SUBJECTS));
+let att = {}, cy, cw, cht = null, cuMode = 'week';
+
+// ── sync UI ───────────────────────────────────────────────────────────────
+function setSS(state, label) {
+  document.getElementById('sdot').className = 'sdot ' + state;
+  document.getElementById('slbl').textContent = label;
+}
+
+// ── date helpers ──────────────────────────────────────────────────────────
+function isoWY(d) {
+  const x=new Date(d); x.setHours(0,0,0,0);
+  x.setDate(x.getDate()+3-(x.getDay()+6)%7);
+  const y4=new Date(x.getFullYear(),0,4);
+  return{year:x.getFullYear(),week:1+Math.round(((x-y4)/86400000-3+(y4.getDay()+6)%7)/7)};
+}
+function getMon(y,w) {
+  const j=new Date(y,0,4),dow=(j.getDay()+6)%7,m=new Date(j);
+  m.setDate(j.getDate()-dow+(w-1)*7); return m;
+}
+function wkDates(y,w) {
+  const m=getMon(y,w);
+  return Array.from({length:7},(_,i)=>{const d=new Date(m);d.setDate(m.getDate()+i);return d;});
+}
+function fmt(d){return d.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit'});}
+function wk(){return`${cy}-W${String(cw).padStart(2,'0')}`;}
+function sk(sid,day,time){return`${sid}-${day}-${time.replace(':','')}`;}
+function getSt(sid,day,time){const w=att[wk()];return w?w[sk(sid,day,time)]||null:null;}
+
+function setSt(sid,day,time,ns){
+  if(!att[wk()])att[wk()]={};
+  const k=sk(sid,day,time);
+  att[wk()][k]=att[wk()][k]===ns?null:ns;
+  render(); save();
+}
+
+// ── timetable geometry ────────────────────────────────────────────────────
+function timeToFrac(time) {
+  const [h,m]=time.split(':').map(Number);
+  return (h*60+m - START_H*60) / ((END_H-START_H)*60);
+}
+function durationToFrac(min) {
+  return min / ((END_H-START_H)*60);
+}
+
+// ── Supabase ──────────────────────────────────────────────────────────────
+async function load() {
+  try {
+    const{data,error}=await db.from('attendance').select('*');
+    if(error)throw error;
+    att={};
+    data.forEach(row=>{
+      if(row.week_key==='_subjects') subjs=row.data.subjects||JSON.parse(JSON.stringify(DEFAULT_SUBJECTS));
+      else att[row.week_key]=row.data;
+    });
+    setSS('ok','Synced');
+  } catch(e) {
+    setSS('err','Offline');
+    try{const r=localStorage.getItem('att:bak');if(r){const d=JSON.parse(r);subjs=d.subjs||JSON.parse(JSON.stringify(DEFAULT_SUBJECTS));att=d.att||{};}}catch(e2){}
+  }
+}
+async function save() {
+  setSS('spin','Speichern…');
+  try {
+    await db.from('attendance').upsert({week_key:wk(),data:att[wk()]||{},updated_at:new Date().toISOString()},{onConflict:'week_key'});
+    setSS('ok','Gespeichert '+new Date().toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}));
+    localStorage.setItem('att:bak',JSON.stringify({subjs,att}));
+  } catch(e) {
+    setSS('err','Fehler – lokal gesichert');
+    localStorage.setItem('att:bak',JSON.stringify({subjs,att}));
+  }
+}
+async function clearData() {
+  if(!confirm('Alle Daten löschen?'))return;
+  try{
+    await db.from('attendance').delete().neq('week_key','__x__');
+    att={};subjs=JSON.parse(JSON.stringify(DEFAULT_SUBJECTS));
+    localStorage.removeItem('att:bak'); setSS('ok','Gelöscht'); render();
+  }catch(e){setSS('err','Fehler');}
+}
+
+function setCU(v) {
+  cuMode=v;
+  document.getElementById('cu-wk').className='vbtn'+(v==='week'?' active':'');
+  document.getElementById('cu-all').className='vbtn'+(v==='all'?' active':'');
+  renderCatchup();
+}
+function chW(delta){cw+=delta;if(cw<1){cy--;cw=52;}if(cw>52){cy++;cw=1;}render();}
+
+// ── missed helpers ────────────────────────────────────────────────────────
+function parseSK(k){
+  const p=k.split('-');
+  const t=p.pop(),d=p.pop(),sid=p.join('-');
+  return{sid,day:+d,time:t.slice(0,2)+':'+t.slice(2)};
+}
+
+function getMissedAll(){
+  const m=[],now=new Date();now.setHours(0,0,0,0);
+  Object.entries(att).forEach(([wkey,sess])=>{
+    const[ys,ws]=wkey.split('-W'),dates=wkDates(+ys,+ws);
+    Object.entries(sess).forEach(([k,status])=>{
+      if(status!=='absent')return;
+      const{sid,day,time}=parseSK(k);
+      if(day<0||day>6||!dates[day])return;
+      const subj=subjs.find(s=>s.id===sid);if(!subj)return;
+      const sc=subj.schedule.find(s=>s.day===day&&s.time===time);if(!sc)return;
+      if(dates[day]<now)m.push({subj,date:dates[day],time,type:sc.type});
+    });
+  });
+  return m.sort((a,b)=>b.date-a.date);
+}
+
+function getMissedWeek(){
+  const sess=att[wk()]||{}, dates=wkDates(cy,cw), m=[];
+  Object.entries(sess).forEach(([k,status])=>{
+    if(status!=='absent')return;
+    const{sid,day,time}=parseSK(k);
+    if(day<0||day>6||!dates[day])return;
+    const subj=subjs.find(s=>s.id===sid);if(!subj)return;
+    const sc=subj.schedule.find(s=>s.day===day&&s.time===time);if(!sc)return;
+    m.push({subj,date:dates[day],time,type:sc.type});
+  });
+  return m.sort((a,b)=>a.date-b.date);
+}
+
+function getStats(){
+  return subjs.map(subj=>{
+    let total=0,present=0;
+    Object.values(att).forEach(sess=>{
+      subj.schedule.forEach(sc=>{
+        const s=sess[sk(subj.id,sc.day,sc.time)];
+        if(s==='present'||s==='absent'){total++;if(s==='present')present++;}
+      });
+    });
+    return{subj,total,present,pct:total>0?Math.round(present/total*100):null};
+  });
+}
+
+// ── main render ───────────────────────────────────────────────────────────
+function render(){
+  const dates=wkDates(cy,cw), now=new Date(); now.setHours(0,0,0,0);
+  document.getElementById('wl').textContent=`KW ${cw} · ${cy}`;
+  document.getElementById('wd').textContent=`${fmt(dates[0])} – ${fmt(dates[6])}`;
+
+  let tot=0,pres=0,abs=0;
+  Object.entries(att).forEach(([wkey,sess])=>{
+    const[ys,ws]=wkey.split('-W'),ds=wkDates(+ys,+ws);
+    Object.entries(sess).forEach(([k,status])=>{
+      if(status!=='present'&&status!=='absent')return;
+      const{day}=parseSK(k);
+      if(day>=0&&day<=6&&ds[day]&&ds[day]<=now){tot++;status==='present'?pres++:abs++;}
+    });
+  });
+
+  const wSess=att[wk()]||{};
+  let wAbs=0;
+  const wDates=wkDates(cy,cw);
+  Object.entries(wSess).forEach(([k,status])=>{
+    if(status!=='absent')return;
+    const{day}=parseSK(k);
+    if(wDates[day]&&wDates[day]<=now)wAbs++;
+  });
+
+  const pct=tot>0?Math.round(pres/tot*100):null;
+  const missedAll=getMissedAll();
+
+  const e1=document.getElementById('s1');
+  e1.textContent=pct!==null?pct+'%':'–';
+  e1.style.color=pct===null?'':pct>=80?'var(--green)':pct>=60?'#b45309':'var(--red)';
+  document.getElementById('s2').style.color='var(--red)';
+  document.getElementById('s2').textContent=abs;
+  document.getElementById('s4').style.color=wAbs>0?'var(--red)':'var(--text)';
+  document.getElementById('s4').textContent=wAbs;
+  document.getElementById('s3').textContent=missedAll.length;
+
+  renderTimetable(dates, now);
+  renderChart();
+  renderCatchup();
+}
+
+// ── timetable ─────────────────────────────────────────────────────────────
+function renderTimetable(dates, now){
+  const wrap = document.getElementById('timetable');
+  wrap.innerHTML = '';
+
+  const outer = document.createElement('div'); outer.className = 'tt-outer';
+  const inner = document.createElement('div'); inner.className = 'tt-inner';
+
+  // ── header row ──
+  const head = document.createElement('div'); head.className = 'tt-head';
+  const hg = document.createElement('div'); hg.className = 'tt-head-gutter'; head.appendChild(hg);
+  const dHeads = document.createElement('div'); dHeads.className = 'tt-day-heads';
+  DAYS.forEach((d, i) => {
+    const isToday = dates[i].toDateString() === now.toDateString();
+    const isWknd  = i >= 5;
+    const el = document.createElement('div');
+    el.className = 'tt-dh' + (isToday ? ' today' : isWknd ? ' weekend' : '');
+    el.innerHTML = `${d}<br><span style="font-size:calc(var(--xs) - 1px);">${fmt(dates[i])}</span>`;
+    dHeads.appendChild(el);
+  });
+  head.appendChild(dHeads);
+  inner.appendChild(head);
+
+  // ── body ──
+  const body = document.createElement('div'); body.className = 'tt-body';
+
+  // time column
+  const timeCol = document.createElement('div'); timeCol.className = 'tt-timecol';
+  for (let h = START_H; h <= END_H; h++) {
+    const lbl = document.createElement('div');
+    lbl.className = 'tt-tlabel';
+    lbl.textContent = h + ':00';
+    lbl.style.top = `calc(${h - START_H} * var(--hh))`;
+    timeCol.appendChild(lbl);
+  }
+  body.appendChild(timeCol);
+
+  // day columns
+  const dayBodies = document.createElement('div'); dayBodies.className = 'tt-day-bodies';
+  DAYS.forEach((_, i) => {
+    const isToday = dates[i].toDateString() === now.toDateString();
+    const isWknd  = i >= 5;
+    const isPast  = dates[i] <= now;
+    const col = document.createElement('div');
+    col.className = 'tt-daycol' + (isToday ? ' today-col' : isWknd ? ' weekend-col' : '');
+
+    // sessions for this day
+    const sessions = subjs.flatMap(s => s.schedule.filter(sc => sc.day === i).map(sc => ({s, sc})));
+    sessions.forEach(({s, sc}) => {
+      const status = getSt(s.id, i, sc.time);
+      const frac   = timeToFrac(sc.time);
+      const hFrac  = durationToFrac(sc.duration);
+      const tc     = TYPE_COLORS[sc.type] || '#888';
+      const bg     = status ? s.color + '2C' : s.color + '18';
+      const bc     = status === 'present' ? s.color : status === 'absent' ? '#E24B4A' : s.color + '55';
+
+      const sess = document.createElement('div');
+      sess.className = 'tt-sess';
+      sess.style.cssText = `top:calc(${frac*100}% );height:calc(${hFrac*100}%);background:${bg};border-color:${bc};`;
+
+      const btns = isPast
+        ? `<div class="ts-btns">
+            <button class="ts-btn${status==='present'?' ap':''}" onclick="setSt('${s.id}',${i},'${sc.time}','present')">✓</button>
+            <button class="ts-btn${status==='absent'?' aa':''}" onclick="setSt('${s.id}',${i},'${sc.time}','absent')">✗</button>
+          </div>`
+        : `<div class="ts-future">demnächst</div>`;
+
+      sess.innerHTML = `
+        <div class="ts-name" style="color:${s.color};">${s.name}</div>
+        <div class="ts-type" style="color:${tc};">${sc.type}</div>
+        ${btns}`;
+      col.appendChild(sess);
+    });
+    dayBodies.appendChild(col);
+  });
+  body.appendChild(dayBodies);
+  inner.appendChild(body);
+  outer.appendChild(inner);
+  wrap.appendChild(outer);
+}
+
+// ── chart ─────────────────────────────────────────────────────────────────
+function renderChart(){
+  if(cht){cht.destroy();cht=null;}
+  const stats=getStats();
+  document.getElementById('cw').style.height=Math.max(160,subjs.length*44+50)+'px';
+  document.getElementById('ci').textContent=stats.some(s=>s.total>0)?'Semester gesamt – tap für Details':'Noch keine Einträge – ✓ oder ✗ bei vergangenen Terminen tippen.';
+  cht=new Chart(document.getElementById('cc'),{
+    type:'bar',
+    data:{labels:stats.map(s=>s.subj.short),datasets:[{data:stats.map(s=>s.pct??0),backgroundColor:stats.map(s=>s.subj.color+'80'),borderColor:stats.map(s=>s.subj.color),borderWidth:1,borderRadius:4}]},
+    options:{
+      indexAxis:'y',responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{
+        label:ctx=>{const st=stats[ctx.dataIndex];return` ${st.present}/${st.total} · ${st.pct??0}%`;},
+        title:ctx=>[stats[ctx[0].dataIndex].subj.name]
+      }}},
+      scales:{
+        x:{min:0,max:100,ticks:{callback:v=>v+'%',color:'#888',font:{size:13}},grid:{color:'rgba(128,128,128,0.07)'}},
+        y:{ticks:{color:'#888',font:{size:13}},grid:{display:false}}
+      }
+    }
+  });
+}
+
+// ── catchup ───────────────────────────────────────────────────────────────
+function renderCatchup(){
+  const missed = cuMode==='week' ? getMissedWeek() : getMissedAll();
+  const nl = document.getElementById('nl');
+  nl.innerHTML = missed.length
+    ? missed.map(m=>`<div class="nli">
+        <div class="nd" style="background:${m.subj.color};"></div>
+        <div class="ni-name">${m.subj.name}</div>
+        <span class="ni-type" style="background:${TYPE_COLORS[m.type]||'#888'}22;color:${TYPE_COLORS[m.type]||'#888'};">${m.type}</span>
+        <div class="ni-date">${DFULL[JS2IDX[m.date.getDay()]]}, ${fmt(m.date)} · ${m.time}</div>
+      </div>`).join('')
+    : `<div class="em">${cuMode==='week'?'Diese Woche keine Fehltermine.':'Nichts nachzuholen.'}</div>`;
+}
+
+// ── init ──────────────────────────────────────────────────────────────────
+async function init(){
+  const{year,week}=isoWY(new Date()); cy=year; cw=week;
+  setSS('spin','Laden…');
+  await load();
+  document.getElementById('ls').style.display='none';
+  document.getElementById('app').style.display='block';
+  render();
+}
+init();
+</script>
+</body>
+</html>
